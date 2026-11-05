@@ -8,6 +8,8 @@ description: Recetario de fórmulas Excel compatibles con el Excel de SILDEC (si
 Fórmulas listas para copiar en los Excel de importaciones. Formato y colores: **sildec-formato-excel**. Lógica del cálculo: **sildec-costeo-importacion** y **sildec-seguimiento-importaciones**.
 
 ## Reglas
+- Agregar **solo las columnas y métricas que se piden**; las ideas extra se sugieren aparte. Nunca cambiar el formato de las plantillas de SILDEC (plancha de pedido, rotaciones).
+- `TC` = TC oficial BCB del día (~11,68 en oct 2026). Nunca 6,96 ni el paralelo, tampoco en costos y márgenes.
 - El Excel de SILDEC **no tiene** XLOOKUP/BUSCARX, MAXIFS, MINIFS, FILTER, UNIQUE, LET ni matrices dinámicas. Usar SUMAR.SI.CONJUNTO, CONTAR.SI.CONJUNTO, SUMAPRODUCTO, INDICE/COINCIDIR, BUSCARV, SI.ERROR.
 - Excel en español: separador **;**. Si se genera el archivo con Python (openpyxl), escribir la fórmula en inglés con **,** (SUMIFS, SUMPRODUCT, INDEX, MATCH, VLOOKUP, IFERROR, IF, AND, ROUND); Excel la muestra en español solo.
 - Rangos acotados (`$A$2:$A$2000`), no columnas enteras, dentro de SUMAPRODUCTO.
@@ -59,9 +61,30 @@ A2 = lunes de la semana. Estado en PAGOS!G (PAGADO / COMPROMETIDO / ESTIMADO).
 `=SUMAR.SI.CONJUNTO(PAGOS!$D$2:$D$500;PAGOS!$B$2:$B$500;">="&A2;PAGOS!$B$2:$B$500;"<"&A2+7;PAGOS!$G$2:$G$500;"COMPROMETIDO")`
 - Capital en tránsito: `=SUMAPRODUCTO((IMPORTACIONES!$Q$2:$Q$300="")*IMPORTACIONES!$Z$2:$Z$300)` (Q ingreso DeltaWin vacío, Z total pagado)
 
+## Datos de DeltaWin (limpiar antes de cruzar)
+- Código sin espacios al final: `=ESPACIOS(A2)` (también quita dobles espacios; si el código se lee como número, `=ESPACIOS(TEXTO(A2;"0"))`). Cruzar siempre con la columna limpia.
+- Traer el Código Jadever desde el Código interno: `=SI.ERROR(INDICE(MAESTRO!$B$2:$B$3000;COINCIDIR(ESPACIOS(A2);MAESTRO!$A$2:$A$3000;0));"SIN CÓDIGO")`
+- Saldo negativo: `=SI(SALDO2<0;"Dato a revisar";"")` (es una devolución).
+- Ventas sin devoluciones (ventas negativas no cuentan): `=SUMAR.SI.CONJUNTO(VENTAS!$F$2:$F$9000;VENTAS!$A$2:$A$9000;A2;VENTAS!$F$2:$F$9000;">0")`
+- Excluir material POP y repuestos (según la columna que los marque, p. ej. CLASE): agregar `;VENTAS!$D$2:$D$9000;"<>POP";VENTAS!$D$2:$D$9000;"<>REPUESTOS"` al SUMAR.SI.CONJUNTO.
+
+## Capital de trabajo, días de inventario y plata parada
+Cada término, en simple: **CT** = plata que hace falta tener metida en mercadería y cuentas por cobrar; **DIO** = cuántos días dura el stock al ritmo actual; **plata parada** = lo invertido en productos que no se venden.
+- CT (año): `=COSTO_ANUAL*(DIAS_IMPORT+DIAS_ROTACION)/365+VENTAS_ANUALES*DIAS_COBRO/365`
+- CT (análisis de 4 meses): mismo cálculo con `120` en vez de `365` y costo/ventas del período.
+- DIO: `=SI.ERROR(STOCK_AL_COSTO/COSTO_VENTAS_PERIODO*DIAS_PERIODO;"N/A")` (Jadever ronda 168 días)
+- Plata parada de un ITEM (no rota = sin ventas en el período, o el criterio que se pida): `=SI(VENTAS_PERIODO2=0;SALDO2*COSTO2;0)`; total por marca con SUMAR.SI.CONJUNTO. Ordenar de mayor a menor para priorizar promociones.
+
 ## Precios y margen
-- Precio para margen: `=REDONDEAR(COSTO/(1-MARGEN);2)` (Jadever 30 % → `/0,7`)
-- Margen resultante: `=SI.ERROR((PRECIO-COSTO)/PRECIO;"N/A")`
+Costos y márgenes solo en archivos del admin; en los de vendedores, solo precio de venta.
+- Margen bruto: `=SI.ERROR((PRECIO-COSTO)/PRECIO;"N/A")` con COSTO en Bs al TC oficial.
+- Precio para margen: `=REDONDEAR(COSTO/(1-MARGEN);2)`
+- Jadever C Regular: `=REDONDEAR(LISTA*(1-35%);2)`
+- Jadever B Preferente: `=REDONDEAR(LISTA*(1-35%)*(1-35%);2)`
+- Jadever A VIP: `=REDONDEAR(LISTA*(1-35%)*(1-40%);2)` (descuentos sucesivos: se multiplican, nunca se suman)
+- Promo del mes: precio fijo en su celda, sin aplicarle los descuentos A/B/C.
+- Piso de precio: `=SI(PRECIO_PROMO<COSTO_BS;"BAJO COSTO";SI((PRECIO_PROMO-COSTO_BS)/PRECIO_PROMO<MARGEN_MIN;"BAJO MARGEN";"OK"))`
+- Margen efectivo de un 3x2: `=SI.ERROR((2*PRECIO-3*COSTO)/(2*PRECIO);"N/A")`; de un 2x1: `=(PRECIO-2*COSTO)/PRECIO` (con 28–32 % sale negativo, por eso casi nunca conviene). Ojo: un 3x2 solo deja ganancia si el margen normal del ítem supera 33,3 %, y un 2x1 si supera 50 %; calcularlo siempre por ítem antes de proponerlo.
 - Alerta Jadever: `=SI(MARGEN_CELDA<0,28;"BAJO 28%";"OK")`
 - Costo anterior desde DeltaWin: `=SI.ERROR(INDICE(DELTAWIN!$D$2:$D$3000;COINCIDIR(A2;DELTAWIN!$A$2:$A$3000;0));"NUEVO")`
 - Variación de costo: `=SI(ESNUMERO(ANT);NUEVO/ANT-1;"NUEVO")`
