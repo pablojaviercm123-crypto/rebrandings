@@ -1,0 +1,54 @@
+---
+name: sildec-seguimiento-importaciones
+description: Controla las importaciones de SILDEC desde la orden al proveedor hasta el ingreso a DeltaWin - etapas, fechas, pagos 30/70, alertas de atraso, caja en USD y llegadas que alimentan la rotación. Usar para armar o actualizar el tablero de importaciones o el gestor de importaciones.
+---
+
+# Seguimiento de importaciones · SILDEC SRL
+
+Objetivo: que en una sola vista se sepa **qué está en camino, cuánto falta pagar, cuándo llega y qué está atrasado**. Explicar en español simple.
+
+## Contexto SILDEC (el usuario siempre prevalece)
+- Pagos al proveedor: **30 % anticipo** al confirmar y **70 % antes de la llegada** (normalmente antes del embarque o de liberar documentos). Sin crédito.
+- Conversión USD → Bs con **TC oficial BCB del día** (~11,68 en oct 2026), anotando fecha. Nunca 6,96 ni el paralelo.
+- Stock en **DeltaWin**; el saldo sale del almacén de Cochabamba. Llave = ITEM; mostrar "Código interno" y "Código Jadever" (sin espacios al final).
+- Cada importación registra **fecha de llegada y N° de contenedor por producto**. Esas llegadas alimentan la rotación: CRONEX 90D (**cronex-rotacion-90d**) y JADEVER 120D (**ROTACION 120D JADEVER**: desde las importaciones de 2025, sin stock inicial; cada llegada corre sus 120 días por separado, aunque el producto haya llegado varias veces).
+- Existe un gestor de importaciones propio (Supabase/n8n): si se trabaja en él, respetar su estructura.
+- **Solo las columnas que se piden**; no cambiar el formato de archivos existentes. La lista de abajo es una estructura sugerida para armar desde cero, a confirmar con JAVIER.
+
+## 1. Una fila por importación (hoja IMPORTACIONES)
+Columnas: N° IMPORTACIÓN · N° CONTENEDOR · PROVEEDOR · MARCA · INCOTERM · FECHA ORDEN · MONTO U$ · ANTICIPO 30 % (fecha, monto, TC) · SALDO 70 % (fecha prevista, fecha pagada, TC) · FECHA LISTA EN FÁBRICA · FECHA EMBARQUE (ETD) · FECHA LLEGADA PUERTO/FRONTERA (ETA) · N° DIM/DUI · FECHA DESPACHO · FECHA LLEGADA ALMACÉN · FECHA INGRESO DELTAWIN · ETAPA · RESPONSABLE · PRÓXIMA ACCIÓN · OBSERVACIONES.
+Detalle por ITEM en otra hoja (IMPORTACION_ITEMS): N° IMPORTACIÓN · N° CONTENEDOR · CÓDIGO INTERNO · CÓDIGO JADEVER · ITEM · MODELO · DESCRIPCIÓN · CLASE · CANT. PEDIDA · CANT. RECIBIDA · DIFERENCIA.
+
+## 2. Etapas fijas
+1 ORDEN → 2 ANTICIPO PAGADO → 3 EN PRODUCCIÓN → 4 SALDO PAGADO → 5 EMBARCADO → 6 EN PUERTO/FRONTERA → 7 EN ADUANA → 8 EN ALMACÉN → 9 INGRESADO A DELTAWIN → 10 COSTEADO.
+La etapa se calcula con fórmula desde las fechas llenas (la última fecha registrada manda), no se escribe a mano.
+
+## 3. Alertas (OK / REVISAR / ATRASADO)
+- Saldo 70 % sin pagar a menos de N días del embarque (N en PARAMETROS).
+- ETA pasada sin fecha de llegada al almacén.
+- Más de N días en aduana o en almacén sin ingreso a DeltaWin.
+- Cant. recibida ≠ pedida → reclamar al proveedor y costear con lo recibido.
+- Importación llegada pero sin costeo cerrado (ver **sildec-costeo-importacion**).
+Mostrar días de atraso, no solo el color.
+
+## 4. Caja de importaciones
+- Calendario semanal de pagos en U$ y en Bs (TC BCB de la fecha o TC de proyección marcado como supuesto): anticipos, saldos, flete, tributos, despachante.
+- Separar **pagado / comprometido / estimado**. Total a pagar en las próximas 4 y 13 semanas.
+- Capital inmovilizado en tránsito = Σ pagado de importaciones aún no ingresadas a DeltaWin.
+- Días desde el anticipo hasta el ingreso a almacén (**días de importación**) por proveedor: sirve para planificar la próxima orden y entra en el capital de trabajo.
+- **Capital de trabajo (CT)**, o sea cuánta plata necesita SILDEC tener "metida" en el negocio: CT = costo anual × (días de importación + días de rotación) / 365 + ventas anuales × días de cobro / 365. Para análisis de 4 meses, usar 120 en vez de 365. Para la caja general seguir **sildec-asesor-financiero**.
+
+## 5. Indicadores
+- Lead time promedio por proveedor y por etapa (orden → almacén).
+- % de importaciones a tiempo (llegada ≤ ETA original).
+- Diferencias de cantidad por proveedor.
+- Monto en tránsito por marca (Jadever concentra la mayor parte del capital).
+
+## 6. Actualización semanal
+1. Llenar fechas nuevas y pagos realizados (con TC BCB).
+2. Revisar alertas y escribir PRÓXIMA ACCIÓN con responsable.
+3. Lo que llegó: pasar al costeo y a la rotación con su fecha de llegada y N° de contenedor (CRONEX 90D o JADEVER 120D).
+4. Confirmar con DeltaWin que lo ingresado cuadra con lo recibido.
+
+## Entrega
+Excel con **sildec-formato-excel** y fórmulas de **sildec-formulas-importacion**. Arriba, 3 frases: qué llega pronto, qué pago viene y qué está atrasado. No contactar proveedores ni hacer pagos: solo preparar borradores si se piden.
